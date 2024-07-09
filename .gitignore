@@ -1,0 +1,9 @@
+node_modules
+config.json
+.env
+.serverless
+.vscode
+.idea
+.history
+.DS_Store
+.dccache

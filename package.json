@@ -1,0 +1,23 @@
+{
+  "name": "@pius-grainger/pulumi-lambda-library",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pius-grainger/pulumi-lambda-library.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com/"
+  },
+  "dependencies": {
+    "@pulumi/aws": "^6.44.0",
+    "@pulumi/pulumi": "^3.122.0",
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.3"
+  }
+}
