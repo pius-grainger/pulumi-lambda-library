@@ -5,8 +5,9 @@
     "strict": true,
     "esModuleInterop": true,
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "declaration": true,  // Add this line to generate declaration files
+    "declarationMap": true // Add this line to generate source maps for declaration files
   },
   "include": ["src/**/*.ts"]
 }
-
