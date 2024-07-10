@@ -13,3 +13,5 @@ npm install @pius-grainger/pulumi-lambda-library
 1. **Login to npm**:
    ```bash
    npm login --registry=https://npm.pkg.github.com
+   npm run build
+   npm publish
