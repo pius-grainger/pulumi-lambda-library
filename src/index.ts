@@ -12,8 +12,8 @@ export interface LambdaConfig {
     handlerFileName: string;
     runtime: aws.lambda.Runtime;
     triggers: LambdaTrigger[];
-    s3Bucket: aws.s3.Bucket; // Reference to the existing S3 bucket
-    artifactPath: string; // Path to the ZIP artifact
+    s3Bucket: aws.s3.Bucket;
+    artifactPath: string;
 }
 
 export function createLambdaRole(name: string): aws.iam.Role {
@@ -67,93 +67,50 @@ export function createLambda(config: LambdaConfig): aws.lambda.Function[] {
             runtime: config.runtime,
         });
 
-        if (trigger.type === "apigateway") {
-            const api = new aws.apigatewayv2.Api(`${config.name}-api`, {
-                protocolType: "HTTP",
-            });
-
-            const integration = new aws.apigatewayv2.Integration(`${config.name}-integration`, {
-                apiId: api.id,
-                integrationType: "AWS_PROXY",
-                integrationUri: lambda.arn,
-                payloadFormatVersion: "2.0",
-            });
-
-            new aws.apigatewayv2.Route(`${config.name}-route`, {
-                apiId: api.id,
-                routeKey: "$default",
-                target: pulumi.interpolate`integrations/${integration.id}`,
-            });
-
-            new aws.lambda.Permission(`${config.name}-apiPermission`, {
-                action: "lambda:InvokeFunction",
-                function: lambda,
-                principal: "apigateway.amazonaws.com",
-                sourceArn: pulumi.interpolate`${api.executionArn}/*/*`,
-            });
-
-            api.id.apply(id => pulumi.log.info(`API ID: ${id}`));
-            api.executionArn.apply(endpoint => pulumi.log.info(`API Execution ARN: ${endpoint}`));
-        } else if (trigger.type === "sns") {
-            const topic = new aws.sns.Topic(`${config.name}-topic`);
-
-            new aws.sns.TopicSubscription(`${config.name}-subscription`, {
-                topic: topic,
-                protocol: "lambda",
-                endpoint: lambda.arn,
-            });
-
-            new aws.lambda.Permission(`${config.name}-snsPermission`, {
-                action: "lambda:InvokeFunction",
-                function: lambda,
-                principal: "sns.amazonaws.com",
-                sourceArn: topic.arn,
-            });
-
-            topic.arn.apply(arn => pulumi.log.info(`SNS Topic ARN: ${arn}`));
-        }
-
         lambdas.push(lambda);
     });
 
     return lambdas;
 }
 
-export function createLambdaFromS3(name: string, s3BucketName: string, s3Key: string, handler: string, runtime: aws.lambda.Runtime): aws.lambda.Function {
-    const lambdaRole = createLambdaRole(name);
-
-    return new aws.lambda.Function(name, {
-        s3Bucket: s3BucketName,
-        s3Key: s3Key,
-        role: lambdaRole.arn,
-        handler: handler,
-        runtime: runtime,
-    });
-}
-
 export interface ApiGatewayConfig {
     apiName: string;
     lambda: aws.lambda.Function;
     resourcePath: string;
+    method: string;
 }
 
-export function createApiGateway(config: ApiGatewayConfig): aws.apigatewayv2.Api {
-    const api = new aws.apigatewayv2.Api(`${config.apiName}-api`, {
-        protocolType: "HTTP",
+export function createApiGateway(config: ApiGatewayConfig): aws.apigateway.RestApi {
+    const api = new aws.apigateway.RestApi(`${config.apiName}-api`, {
+        name: `${config.apiName}-api`,
     });
 
-    const integration = new aws.apigatewayv2.Integration(`${config.apiName}-integration`, {
-        apiId: api.id,
-        integrationType: "AWS_PROXY",
-        integrationUri: config.lambda.arn,
-        payloadFormatVersion: "2.0",
+    const resource = new aws.apigateway.Resource(`${config.apiName}-resource`, {
+        restApi: api.id,
+        parentId: api.rootResourceId,
+        pathPart: config.resourcePath,
     });
 
-    new aws.apigatewayv2.Route(`${config.apiName}-route`, {
-        apiId: api.id,
-        routeKey: "$default",
-        target: pulumi.interpolate`integrations/${integration.id}`,
+    const method = new aws.apigateway.Method(`${config.apiName}-method`, {
+        restApi: api.id,
+        resourceId: resource.id,
+        httpMethod: config.method,
+        authorization: "NONE",
     });
+
+    const integration = new aws.apigateway.Integration(`${config.apiName}-integration`, {
+        restApi: api.id,
+        resourceId: resource.id,
+        httpMethod: method.httpMethod,
+        type: "AWS_PROXY",
+        integrationHttpMethod: "POST",
+        uri: config.lambda.invokeArn,
+    });
+
+    const deployment = new aws.apigateway.Deployment(`${config.apiName}-deployment`, {
+        restApi: api.id,
+        stageName: "v1",
+    }, { dependsOn: [integration] });
 
     new aws.lambda.Permission(`${config.apiName}-apiPermission`, {
         action: "lambda:InvokeFunction",
