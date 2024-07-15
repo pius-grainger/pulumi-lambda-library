@@ -9,15 +9,16 @@ export interface LambdaTrigger {
 
 export interface LambdaConfig {
     name: string;
-    handlerFileName: string;
+    handler: string;
+    entryPoint: string;
     runtime: aws.lambda.Runtime;
     triggers: LambdaTrigger[];
     s3Bucket: aws.s3.Bucket;
     artifactPath: string;
-    tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>;
+    tags: pulumi.Input<{ [key: string]: pulumi.Input<string> }>; // Tags are required
 }
 
-export function createLambdaRole(name: string, tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>): aws.iam.Role {
+export function createLambdaRole(name: string, tags: pulumi.Input<{ [key: string]: pulumi.Input<string> }>): aws.iam.Role {
     const lambdaRole = new aws.iam.Role(`${name}-role`, {
         assumeRolePolicy: {
             Version: "2012-10-17",
@@ -43,7 +44,7 @@ export function createLambdaRole(name: string, tags?: pulumi.Input<{ [key: strin
     return lambdaRole;
 }
 
-export function uploadLambdaCodeToS3(bucket: aws.s3.Bucket, handlerFileName: string, artifactPath: string, tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>): aws.s3.BucketObject {
+export function uploadLambdaCodeToS3(bucket: aws.s3.Bucket, handlerFileName: string, artifactPath: string, tags: pulumi.Input<{ [key: string]: pulumi.Input<string> }>): aws.s3.BucketObject {
     if (!fs.existsSync(artifactPath)) {
         throw new Error(`Artifact ${artifactPath} not found. Please build the project first.`);
     }
@@ -60,13 +61,13 @@ export function createLambda(config: LambdaConfig): aws.lambda.Function[] {
     const lambdas: aws.lambda.Function[] = [];
 
     config.triggers.forEach(trigger => {
-        const s3Object = uploadLambdaCodeToS3(config.s3Bucket, config.handlerFileName, config.artifactPath, config.tags);
+        const s3Object = uploadLambdaCodeToS3(config.s3Bucket, config.handler, config.artifactPath, config.tags);
 
         const lambda = new aws.lambda.Function(`${config.name}-${trigger.type}`, {
             s3Bucket: config.s3Bucket.bucket,
             s3Key: s3Object.key,
             role: lambdaRole.arn,
-            handler: "index.handler",
+            handler: config.entryPoint,
             runtime: config.runtime,
             tags: config.tags,
         });
@@ -82,7 +83,7 @@ export interface ApiGatewayConfig {
     lambda: aws.lambda.Function;
     resourcePath: string;
     method: string;
-    tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>;
+    tags: pulumi.Input<{ [key: string]: pulumi.Input<string> }>; // Tags are required
 }
 
 export function createApiGateway(config: ApiGatewayConfig): aws.apigateway.RestApi {
@@ -131,7 +132,7 @@ export function createApiGateway(config: ApiGatewayConfig): aws.apigateway.RestA
 export interface SnsConfig {
     snsName: string;
     lambda: aws.lambda.Function;
-    tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>;
+    tags: pulumi.Input<{ [key: string]: pulumi.Input<string> }>; // Tags are required
 }
 
 export function createSns(config: SnsConfig): aws.sns.Topic {
