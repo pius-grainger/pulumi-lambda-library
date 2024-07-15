@@ -2,7 +2,6 @@ import * as pulumi from "@pulumi/pulumi";
 import * as aws from "@pulumi/aws";
 import * as path from "path";
 import * as fs from "fs";
-import { standardTags } from "./tags";
 
 export interface LambdaTrigger {
     type: "apigateway" | "sns";
@@ -15,6 +14,7 @@ export interface LambdaConfig {
     triggers: LambdaTrigger[];
     s3Bucket: aws.s3.Bucket;
     artifactPath: string;
+    tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>;
 }
 
 export function createLambdaRole(name: string, tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>): aws.iam.Role {
@@ -32,7 +32,7 @@ export function createLambdaRole(name: string, tags?: pulumi.Input<{ [key: strin
                 },
             ],
         },
-        tags: { ...standardTags, ...tags },
+        tags: tags,
     });
 
     new aws.iam.RolePolicyAttachment(`${name}-policy`, {
@@ -51,16 +51,16 @@ export function uploadLambdaCodeToS3(bucket: aws.s3.Bucket, handlerFileName: str
     return new aws.s3.BucketObject(`${handlerFileName}.zip`, {
         bucket: bucket,
         source: new pulumi.asset.FileAsset(artifactPath),
-        tags: { ...standardTags, ...tags },
+        tags: tags,
     });
 }
 
-export function createLambda(config: LambdaConfig, tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>): aws.lambda.Function[] {
-    const lambdaRole = createLambdaRole(config.name, tags);
+export function createLambda(config: LambdaConfig): aws.lambda.Function[] {
+    const lambdaRole = createLambdaRole(config.name, config.tags);
     const lambdas: aws.lambda.Function[] = [];
 
     config.triggers.forEach(trigger => {
-        const s3Object = uploadLambdaCodeToS3(config.s3Bucket, config.handlerFileName, config.artifactPath, tags);
+        const s3Object = uploadLambdaCodeToS3(config.s3Bucket, config.handlerFileName, config.artifactPath, config.tags);
 
         const lambda = new aws.lambda.Function(`${config.name}-${trigger.type}`, {
             s3Bucket: config.s3Bucket.bucket,
@@ -68,7 +68,7 @@ export function createLambda(config: LambdaConfig, tags?: pulumi.Input<{ [key: s
             role: lambdaRole.arn,
             handler: "index.handler",
             runtime: config.runtime,
-            tags: { ...standardTags, ...tags },
+            tags: config.tags,
         });
 
         lambdas.push(lambda);
@@ -82,19 +82,19 @@ export interface ApiGatewayConfig {
     lambda: aws.lambda.Function;
     resourcePath: string;
     method: string;
+    tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>;
 }
 
-export function createApiGateway(config: ApiGatewayConfig, tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>): aws.apigateway.RestApi {
+export function createApiGateway(config: ApiGatewayConfig): aws.apigateway.RestApi {
     const api = new aws.apigateway.RestApi(`${config.apiName}-api`, {
         name: `${config.apiName}-api`,
-        tags: { ...standardTags, ...tags },
+        tags: config.tags,
     });
 
     const resource = new aws.apigateway.Resource(`${config.apiName}-resource`, {
         restApi: api.id,
         parentId: api.rootResourceId,
         pathPart: config.resourcePath,
-        tags: { ...standardTags, ...tags },
     });
 
     const method = new aws.apigateway.Method(`${config.apiName}-method`, {
@@ -102,7 +102,6 @@ export function createApiGateway(config: ApiGatewayConfig, tags?: pulumi.Input<{
         resourceId: resource.id,
         httpMethod: config.method,
         authorization: "NONE",
-        tags: { ...standardTags, ...tags },
     });
 
     const integration = new aws.apigateway.Integration(`${config.apiName}-integration`, {
@@ -112,7 +111,6 @@ export function createApiGateway(config: ApiGatewayConfig, tags?: pulumi.Input<{
         type: "AWS_PROXY",
         integrationHttpMethod: "POST",
         uri: config.lambda.invokeArn,
-        tags: { ...standardTags, ...tags },
     });
 
     const deployment = new aws.apigateway.Deployment(`${config.apiName}-deployment`, {
@@ -133,19 +131,19 @@ export function createApiGateway(config: ApiGatewayConfig, tags?: pulumi.Input<{
 export interface SnsConfig {
     snsName: string;
     lambda: aws.lambda.Function;
+    tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>;
 }
 
-export function createSns(config: SnsConfig, tags?: pulumi.Input<{ [key: string]: pulumi.Input<string> }>): aws.sns.Topic {
+export function createSns(config: SnsConfig): aws.sns.Topic {
     const topic = new aws.sns.Topic(`${config.snsName}-topic`, {
         name: `${config.snsName}-topic`,
-        tags: { ...standardTags, ...tags },
+        tags: config.tags,
     });
 
     new aws.sns.TopicSubscription(`${config.snsName}-subscription`, {
         topic: topic,
         protocol: "lambda",
         endpoint: config.lambda.arn,
-        tags: { ...standardTags, ...tags },
     });
 
     new aws.lambda.Permission(`${config.snsName}-snsPermission`, {
